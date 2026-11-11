@@ -220,16 +220,7 @@
       "store": "Store",
       "product": "Product"
     },
-    "csvHeaders": [
-      "Record type",
-      "Name",
-      "Category",
-      "SKU",
-      "Net sales",
-      "Transactions",
-      "Units sold",
-      "Gross margin"
-    ]
+    "csvHeaders": ["Record type", "Name", "Category", "SKU", "Net sales", "Transactions", "Units sold", "Gross margin"]
   },
   "seed": {
     "version": 1,
