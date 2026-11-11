@@ -182,7 +182,9 @@ function WorkspaceSidebar({
             {copy(model, 'userInitials')}
           </span>
           <span className="profile-copy">
-            <small>{copy(model, 'releaseVersion')} {APP_VERSION}</small>
+            <small>
+              {copy(model, 'releaseVersion')} {APP_VERSION}
+            </small>
             <strong>{copy(model, 'userName')}</strong>
             <small>{copy(model, 'userRole')}</small>
           </span>
