@@ -1,6 +1,7 @@
 # RetailPulse Frontend
 
 [Architecture guide](docs/architecture.md) — source map, workflows, contracts, data, security, and checks.
+**Live demo:** https://retailpulse-frontend-pi.vercel.app/
 
 ## Repository layout and Windows workflow
 
