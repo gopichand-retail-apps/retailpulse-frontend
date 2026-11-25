@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const appTitle = 'Sales overview';
 const frontendPort = process.env.RETAILPULSE_FRONTEND_PORT ?? '5701';
@@ -190,4 +190,47 @@ test('mobile navigation opens and selects a workspace view', async ({ page }) =>
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
   await page.getByRole('button', { name: 'Products', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Product performance', level: 1 })).toBeVisible();
+});
+
+async function openProductsOnNarrowViewport(page: Page) {
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('button', { name: 'Products', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Product performance', level: 1 })).toBeVisible();
+  await expect(page.locator('.data-table tbody tr').first()).toBeVisible();
+}
+
+function documentFitsViewport(page: Page) {
+  return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+}
+
+test('RP-01 resize: a populated Products page stays inside the viewport from desktop down to 320 px', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Products', exact: true }).click();
+  await expect(page.locator('.data-table tbody tr').first()).toBeVisible();
+  for (const width of [768, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.poll(() => documentFitsViewport(page), { message: `document fits at ${width}px` }).toBe(true);
+  }
+});
+
+test('RP-01 resize: a fresh 320 px load of Products does not overflow the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openProductsOnNarrowViewport(page);
+  await expect.poll(() => documentFitsViewport(page)).toBe(true);
+});
+
+test('RP-01 resize: the wide Products table sits in a labeled region that scrolls from the keyboard', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openProductsOnNarrowViewport(page);
+  const region = page.getByRole('region', { name: 'Product performance table' });
+  await expect(region).toBeVisible();
+  await region.focus();
+  await expect(region).toBeFocused();
+  for (let press = 0; press < 4; press += 1) await page.keyboard.press('ArrowRight');
+  await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => documentFitsViewport(page)).toBe(true);
 });

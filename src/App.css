@@ -887,8 +887,14 @@
 }
 
 .table-scroll {
+  position: relative;
   width: 100%;
   overflow-x: auto;
+}
+
+.app-shell .table-scroll:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: -2px;
 }
 
 .data-table {

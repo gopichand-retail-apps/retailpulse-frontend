@@ -66,7 +66,7 @@ export function ProductsView({
       {products.length === 0 ? (
         <p className="empty-state">{copy(model, 'noProducts')}</p>
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label={copy(model, 'productTableRegion')} tabIndex={0}>
           <table className="data-table">
             <thead>
               <tr>

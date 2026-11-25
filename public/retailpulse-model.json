@@ -81,6 +81,8 @@
     "storeChartDescription": "Net sales by store for the selected period.",
     "categoryChartDescription": "Net sales share by product category.",
     "inventoryNote": "Stock values are current snapshots, not historical balances.",
+    "productTableRegion": "Product performance table, scrollable",
+    "storeTableRegion": "Store performance table, scrollable",
     "revenueIncrease": "Revenue increased",
     "revenueDecrease": "Revenue decreased",
     "noChange": "No change",
