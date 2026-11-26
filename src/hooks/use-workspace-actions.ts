@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ApiError, exportReport, ingestSales, updateAlert } from '../lib/api';
 import { copy } from '../lib/presentation';
 import type { PublicModel, SalesFilters } from '../lib/types';
@@ -9,13 +9,45 @@ interface WorkspaceActionsOptions {
   refresh: () => void;
 }
 
-interface Notice {
+export interface Notice {
   message: string;
-  tone: 'success' | 'error';
+  tone: 'success' | 'error' | 'pending';
 }
 
 function safeActionError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
+}
+
+/**
+ * Only a 4xx reply proves the server did not apply a write. A network error, a 5xx or an unreadable
+ * reply leaves the outcome unknown, so the same intent must be retried with the same key.
+ */
+function isOutcomeUnknown(error: unknown): boolean {
+  return !(error instanceof ApiError) || error.status < 400 || error.status >= 500;
+}
+
+/**
+ * Stable intent key for "add sample sales" (stable intent key pattern, decision D-11): created when the user
+ * confirms, reused for every retry, discarded after a confirmed result or a definitive refusal. It lives only in
+ * memory, so a reload starts a new intent. The request carries no payload, so there is nothing to replace it for.
+ */
+function useIngestIntent() {
+  const keyRef = useRef<string | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  return {
+    unconfirmed,
+    claimKey(): string {
+      keyRef.current ??= crypto.randomUUID();
+      return keyRef.current;
+    },
+    awaitConfirmation() {
+      setUnconfirmed(true);
+    },
+    settle() {
+      keyRef.current = null;
+      setUnconfirmed(false);
+    },
+  };
 }
 
 export function useWorkspaceActions({ model, filters, refresh }: WorkspaceActionsOptions) {
@@ -23,6 +55,7 @@ export function useWorkspaceActions({ model, filters, refresh }: WorkspaceAction
   const [alertError, setAlertError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'ingest' | 'export' | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const ingestIntent = useIngestIntent();
 
   async function saveAlert(alertId: string, changes: { threshold: number; enabled: boolean }) {
     if (!model) return;
@@ -41,16 +74,21 @@ export function useWorkspaceActions({ model, filters, refresh }: WorkspaceAction
 
   async function addSales() {
     if (!model) return;
+    const idempotencyKey = ingestIntent.claimKey();
     setBusyAction('ingest');
     try {
-      await ingestSales(model);
+      await ingestSales(model, idempotencyKey);
+      ingestIntent.settle();
       setNotice({ message: copy(model, 'ingestSuccess'), tone: 'success' });
       refresh();
     } catch (error) {
-      setNotice({
-        message: safeActionError(error, copy(model, 'ingestFailure')),
-        tone: 'error',
-      });
+      if (isOutcomeUnknown(error)) {
+        ingestIntent.awaitConfirmation();
+        setNotice({ message: copy(model, 'ingestAwaiting'), tone: 'pending' });
+      } else {
+        ingestIntent.settle();
+        setNotice({ message: safeActionError(error, copy(model, 'ingestFailure')), tone: 'error' });
+      }
     } finally {
       setBusyAction(null);
     }
@@ -83,6 +121,7 @@ export function useWorkspaceActions({ model, filters, refresh }: WorkspaceAction
     alertError,
     busyAction,
     notice,
+    ingestUnconfirmed: ingestIntent.unconfirmed,
     setNotice,
     saveAlert,
     addSales,

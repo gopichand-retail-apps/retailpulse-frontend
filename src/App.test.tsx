@@ -1,12 +1,28 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { copy, nestedCopy } from './lib/presentation';
-import { activity, alert, contentModel, dashboard, model, product, store, storeDetail } from './test/fixtures';
+import { copy, nestedCopy, sourceCutoffText } from './lib/presentation';
+import type { DashboardData } from './lib/types';
+import {
+  activity,
+  alert,
+  awaitingSource,
+  contentModel,
+  dashboard,
+  model,
+  product,
+  staleSource,
+  store,
+  storeDetail,
+} from './test/fixtures';
+
+type IngestOutcome = 'network' | 'server' | 'disabled' | 'unreadable' | 'ok';
 
 interface ApiBehavior {
   model?: typeof contentModel;
+  dashboard?: DashboardData;
+  ingestOutcomes?: IngestOutcome[];
   failDashboardOnce?: boolean;
   failProductListOnce?: boolean;
   failStoreDetail?: boolean;
@@ -83,7 +99,9 @@ const mockApiRoutes: Array<{
     matches: (url) => url.pathname.endsWith('/dashboard'),
     respond: ({ behavior, state }) => {
       state.dashboardRequests += 1;
-      return behavior.failDashboardOnce && state.dashboardRequests === 1 ? errorResponse() : jsonResponse(dashboard);
+      return behavior.failDashboardOnce && state.dashboardRequests === 1
+        ? errorResponse()
+        : jsonResponse(behavior.dashboard ?? dashboard);
     },
   },
   {
@@ -149,6 +167,20 @@ const mockApiRoutes: Array<{
   },
 ];
 
+function scriptedIngest(outcome: IngestOutcome | undefined): Response {
+  if (outcome === 'network') throw new TypeError('Failed to fetch');
+  if (outcome === 'server') return errorResponse();
+  if (outcome === 'disabled') return errorResponse('SAMPLE_SALES_DISABLED', 409);
+  if (outcome === 'unreadable') return jsonResponse({ unexpected: true });
+  return jsonResponse({ batchNumber: 1, importedAt: '2026-11-01T12:30:00.000Z', recordsAdded: 12, replayed: false });
+}
+
+function ingestAttempts(fetchMock: ReturnType<typeof createApiFetch>): Headers[] {
+  return fetchMock.mock.calls
+    .filter(([, init]) => init?.method === 'POST')
+    .map(([, init]) => new Headers(init?.headers));
+}
+
 function createApiFetch(behavior: ApiBehavior = {}) {
   const state = { dashboardRequests: 0, productListRequests: 0 };
   return vi.fn<typeof fetch>(async (input, init) => {
@@ -162,6 +194,7 @@ function createApiFetch(behavior: ApiBehavior = {}) {
 
     const url = new URL(requestUrl);
     const method = init?.method ?? 'GET';
+    if (method === 'POST' && behavior.ingestOutcomes) return scriptedIngest(behavior.ingestOutcomes.shift());
     const route = mockApiRoutes.find((candidate) => candidate.method === method && candidate.matches(url));
     return route ? route.respond({ url, behavior, state }) : errorResponse('NOT_FOUND', 404);
   });
@@ -195,6 +228,18 @@ function installDownloadStubs(): () => void {
 }
 
 describe('RetailPulse workspace', () => {
+  // The views are lazy chunks. A cold transform under coverage can exceed the 1 s `findBy` wait, which made
+  // "loads metadata..." fail when run alone (reproduced 6/6 on the baseline code). Loading them up front keeps
+  // module-transform time out of the timed assertions; no timeout is raised.
+  beforeAll(async () => {
+    await Promise.all([
+      import('./components/OverviewView'),
+      import('./components/ProductsView'),
+      import('./components/SettingsView'),
+      import('./components/StoresView'),
+    ]);
+  });
+
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -234,7 +279,8 @@ describe('RetailPulse workspace', () => {
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Sales overview', level: 1 });
-    await screen.findByText('Harbor & Pine');
+    // Store filter options now come from the API (D-16); wait for the store option it returns.
+    await screen.findByRole('option', { name: 'Harbor & Pine' });
     expect(document.title).toBe('RetailPulse | Retail intelligence');
     expect(document.documentElement.lang).toBe('en');
     expect(document.querySelector<HTMLMetaElement>('meta[name="description"]')?.content).toBe(model.app.description);
@@ -429,7 +475,7 @@ describe('RetailPulse workspace', () => {
     await screen.findByRole('heading', { name: 'Sales overview', level: 1 });
     await user.click(screen.getByRole('button', { name: 'Products' }));
     expect(await screen.findByText(nestedCopy(model, 'errors', 'server'))).toBeVisible();
-    await user.type(screen.getByRole('searchbox', { name: 'Search products' }), 'BAG-104');
+    await user.type(await screen.findByRole('searchbox', { name: 'Search products' }), 'BAG-104');
     await user.click(
       await screen.findByRole('button', {
         name: 'View product: Everyday Canvas Tote',
@@ -461,7 +507,9 @@ describe('RetailPulse workspace', () => {
     expect(await screen.findByText(nestedCopy(model, 'errors', 'server'))).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: 'Add latest sales' }));
-    expect(await screen.findAllByText(nestedCopy(model, 'errors', 'server'))).toHaveLength(2);
+    // A 5xx leaves the write's outcome unknown, so it awaits confirmation instead of reporting failure.
+    expect(await screen.findByText(copy(model, 'ingestAwaiting'))).toBeVisible();
+    expect(screen.getByRole('button', { name: copy(model, 'ingestRetry') })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Export report' }));
     expect(await screen.findByText(copy(model, 'exportFailure'))).toBeVisible();
 
@@ -470,5 +518,121 @@ describe('RetailPulse workspace', () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('network detail')));
     render(<App />);
     expect(await screen.findByRole('alert')).toHaveTextContent('CONTENT_MODEL_UNAVAILABLE');
+  });
+
+  it('shows the awaiting-first-sale state instead of zero figures on an empty install', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', createApiFetch({ dashboard: { ...dashboard, source: awaitingSource } }));
+    render(<App />);
+
+    const banner = await screen.findByRole('status', { name: copy(model, 'sourceTitle') });
+    expect(within(banner).getByText(nestedCopy(model, 'sourceStates', 'awaiting_first_sale'))).toBeVisible();
+    expect(screen.getByRole('heading', { name: copy(model, 'awaitingPanelTitle') })).toBeVisible();
+    expect(document.querySelectorAll('.metric-card')).toHaveLength(0);
+    expect(screen.queryByText('$1.3K')).toBeNull();
+    expect(screen.getByRole('button', { name: copy(model, 'ingest') })).toBeDisabled();
+
+    for (const view of ['Revenue', 'Stores']) {
+      await user.click(screen.getByRole('button', { name: view }));
+      expect(await screen.findByRole('heading', { name: copy(model, 'awaitingPanelTitle') })).toBeVisible();
+    }
+    await user.click(screen.getByRole('button', { name: 'Products' }));
+    const row = await screen.findByRole('row', { name: /Everyday Canvas Tote/ });
+    expect(within(row).getAllByText(copy(model, 'notAvailable'))).toHaveLength(4);
+    await user.click(screen.getByRole('button', { name: /^Alerts/ }));
+    expect(await screen.findByText(copy(model, 'awaitingStatus'))).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Overview' }));
+    await user.click(await screen.findByRole('button', { name: copy(model, 'awaitingPanelAction') }));
+    expect(await screen.findByRole('heading', { name: copy(model, 'sourceTitle'), level: 2 })).toBeVisible();
+    expect(screen.getByText(copy(model, 'externalFeedStatus'))).toBeVisible();
+  });
+
+  it('keeps figures visible for a stale source and labels its cutoff and coverage', async () => {
+    vi.stubGlobal('fetch', createApiFetch({ dashboard: { ...dashboard, source: staleSource } }));
+    render(<App />);
+
+    const banner = await screen.findByRole('status', { name: copy(model, 'sourceTitle') });
+    expect(within(banner).getByText(nestedCopy(model, 'sourceStates', 'stale'))).toBeVisible();
+    expect(within(banner).getByText(sourceCutoffText(model, staleSource.cutoffAt))).toBeVisible();
+    expect(within(banner).getByText('24 of 30 days with sales')).toBeVisible();
+    expect(document.querySelectorAll('.metric-card')).toHaveLength(4);
+  });
+
+  it('keeps one idempotency key across lost replies and starts a new one after a confirmed result', async () => {
+    const user = userEvent.setup();
+    const fetchMock = createApiFetch({ ingestOutcomes: ['network', 'server', 'ok', 'ok'] });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Sales overview', level: 1 });
+
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingest') }));
+    expect(await screen.findByText(copy(model, 'ingestAwaiting'))).toBeVisible();
+    expect(screen.queryByText(copy(model, 'ingestSuccess'))).toBeNull();
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingestRetry') }));
+    await waitFor(() => expect(ingestAttempts(fetchMock)).toHaveLength(2));
+    expect(await screen.findByText(copy(model, 'ingestAwaiting'))).toBeVisible();
+
+    await user.click(await screen.findByRole('button', { name: copy(model, 'ingestRetry') }));
+    expect(await screen.findByText(copy(model, 'ingestSuccess'))).toBeVisible();
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingest') }));
+    await waitFor(() => expect(ingestAttempts(fetchMock)).toHaveLength(4));
+
+    const keys = ingestAttempts(fetchMock).map((headers) => headers.get('Idempotency-Key'));
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).toBe(keys[0]);
+    expect(keys[3]).not.toBe(keys[0]);
+    const requestIds = ingestAttempts(fetchMock).map((headers) => headers.get('X-Request-ID'));
+    expect(new Set(requestIds).size).toBe(4);
+  });
+
+  it('treats an unreadable success reply as unconfirmed and retries with the same key', async () => {
+    const user = userEvent.setup();
+    const fetchMock = createApiFetch({ ingestOutcomes: ['unreadable', 'ok'] });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Sales overview', level: 1 });
+
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingest') }));
+    expect(await screen.findByText(copy(model, 'ingestAwaiting'))).toBeVisible();
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingestRetry') }));
+    expect(await screen.findByText(copy(model, 'ingestSuccess'))).toBeVisible();
+
+    const keys = ingestAttempts(fetchMock).map((headers) => headers.get('Idempotency-Key'));
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('discards the key after a definitive refusal so the next intent starts fresh', async () => {
+    const user = userEvent.setup();
+    const fetchMock = createApiFetch({ ingestOutcomes: ['disabled', 'ok'] });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Sales overview', level: 1 });
+
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingest') }));
+    expect(await screen.findByText(nestedCopy(model, 'errors', 'sampleSalesDisabled'))).toBeVisible();
+    expect(screen.queryByText(copy(model, 'ingestAwaiting'))).toBeNull();
+    await user.click(screen.getByRole('button', { name: copy(model, 'ingest') }));
+    expect(await screen.findByText(copy(model, 'ingestSuccess'))).toBeVisible();
+
+    const keys = ingestAttempts(fetchMock).map((headers) => headers.get('Idempotency-Key'));
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it('lists store filter options from the API rather than bundled model data', async () => {
+    vi.stubGlobal('fetch', createApiFetch());
+    render(<App />);
+
+    const storeFilter = await screen.findByRole('combobox', { name: 'Store' });
+    await waitFor(() =>
+      expect(
+        within(storeFilter)
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual([copy(model, 'allStores'), store.name]),
+    );
+    expect(model.seed.stores.length).toBeGreaterThan(1);
   });
 });

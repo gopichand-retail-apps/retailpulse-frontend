@@ -21,7 +21,8 @@ const environment = {
 };
 
 const packageRunner = isWindows ? "npx.cmd" : "npx";
-const result = spawnSync(packageRunner, ["playwright", "test"], {
+// Extra arguments (for example --config playwright.empty.config.ts) pass straight to Playwright.
+const result = spawnSync(packageRunner, ["playwright", "test", ...process.argv.slice(2)], {
   cwd: process.cwd(),
   env: environment,
   stdio: "inherit",

@@ -110,7 +110,9 @@ function App() {
       dataLoading={data.dataLoading}
       productsLoading={data.productsLoading}
       busyAction={actions.busyAction}
+      ingestUnconfirmed={actions.ingestUnconfirmed}
       dashboard={data.dashboard}
+      storeOptions={data.storeOptions}
       rangeId={rangeId}
       storeFilter={storeFilter}
       categoryFilter={categoryFilter}
@@ -149,6 +151,7 @@ function App() {
         detailError={data.detailError}
         onTheme={setTheme}
         onRetry={refresh}
+        onReviewSource={() => navigate('settings')}
         onOpenStore={openStore}
         onOpenProduct={openProduct}
         onViewStores={() => navigate('stores')}

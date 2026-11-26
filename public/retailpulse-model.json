@@ -83,6 +83,41 @@
     "inventoryNote": "Stock values are current snapshots, not historical balances.",
     "productTableRegion": "Product performance table, scrollable",
     "storeTableRegion": "Store performance table, scrollable",
+    "sourceTitle": "Sales source",
+    "sourceDescription": "Where the figures in this workspace come from and how current they are.",
+    "sourceStatusLabel": "Source status",
+    "sourceStateLabel": "Reporting state",
+    "sourceCutoffLabel": "Reporting cutoff",
+    "sourceCoverageLabel": "Coverage",
+    "sourceCoverageValue": "{covered} of {total} days with sales",
+    "sourceNoCutoff": "No sale committed yet",
+    "sourceStates": {
+      "awaiting_first_sale": "Awaiting first sale",
+      "empty_period": "Connected, no sales in this period",
+      "current": "Up to date",
+      "stale": "Stale",
+      "missing": "Source missing"
+    },
+    "sourceStateDescriptions": {
+      "awaiting_first_sale": "No sale has been committed yet, so no sales figures are shown. Zero appears only once a source is connected and has delivered its first sale.",
+      "empty_period": "The source is connected and has delivered sales, but none fall in this period or filter, so zero is accurate.",
+      "current": "The source is connected and its latest committed sale is recent.",
+      "stale": "The latest committed sale is older than the freshness window. Figures stop at the reporting cutoff.",
+      "missing": "Sales were committed earlier, but no source is connected now. Figures stop at the reporting cutoff."
+    },
+    "sourceConnections": {
+      "fixture": "Synthetic demo feed (demo profile)",
+      "none": "No sales source connected"
+    },
+    "externalFeedLabel": "Channel sales feed",
+    "externalFeedStatus": "Disabled: no producer is available yet",
+    "ingestUnavailable": "Sample sales are available only in the demo profile.",
+    "ingestAwaiting": "Awaiting confirmation. Retrying sends the same request, so the sales are not added twice.",
+    "ingestRetry": "Retry adding sales",
+    "awaitingPanelTitle": "Figures appear after the first sale",
+    "awaitingPanelBody": "Totals, charts and rankings stay empty until a connected source commits a sale. RetailPulse shows zero only for a connected source that reported no sales in the selected period.",
+    "awaitingPanelAction": "Review the sales source",
+    "awaitingStatus": "Awaiting data",
     "revenueIncrease": "Revenue increased",
     "revenueDecrease": "Revenue decreased",
     "noChange": "No change",
@@ -174,6 +209,7 @@
       "notFound": "The requested resource was not found.",
       "invalidRequest": "The request could not be understood.",
       "originNotAllowed": "This application origin is not allowed.",
+      "sampleSalesDisabled": "Sample sales are available only in the demo profile.",
       "server": "The request could not be completed. Try again."
     }
   },
@@ -272,10 +308,14 @@
       "maximumAlertThreshold": 1000000,
       "maximumActivityItems": 50
     },
+    "source": {
+      "staleAfterHours": 36
+    },
     "reports": {
       "recordTypes": {
         "store": "Store",
-        "product": "Product"
+        "product": "Product",
+        "source": "Source"
       },
       "csvHeaders": [
         "Record type",

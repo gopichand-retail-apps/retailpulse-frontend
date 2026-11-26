@@ -19,6 +19,7 @@ import type {
   PublicModel,
   SalesFilters,
   StoreDetail,
+  StoreOption,
   StoreSummary,
   WorkspaceView,
 } from '../lib/types';
@@ -127,6 +128,29 @@ function useDashboardSnapshot(options: ReadOptions) {
     error: currentError(result, queryKey),
     loading: Boolean(filters && result?.key !== queryKey),
   };
+}
+
+/**
+ * Store filter options come from the API's unfiltered store list (D-16), never from bundled model data.
+ * On a failed read the last known options stay; the dashboard snapshot reports the failure to the user.
+ */
+function useStoreOptions(model: PublicModel | null, days: number, refreshVersion: number): StoreOption[] {
+  const [options, setOptions] = useState<StoreOption[]>([]);
+
+  useEffect(() => {
+    if (!model || days <= 0) return;
+    const controller = new AbortController();
+    void getStores(model, { days }, controller.signal)
+      .then((stores) => {
+        if (!controller.signal.aborted) setOptions(stores.map(({ id, name }) => ({ id, name })));
+      })
+      .catch(() => {
+        /* Keep the last known options; the snapshot request surfaces the same failure. */
+      });
+    return () => controller.abort();
+  }, [model, days, refreshVersion]);
+
+  return options;
 }
 
 function useProductList(options: ReadOptions & { search: string; sort: string }) {
@@ -247,6 +271,7 @@ export function useWorkspaceData(options: WorkspaceDataOptions) {
     refreshVersion,
     queryKey: dataQueryKey,
   });
+  const storeOptions = useStoreOptions(model, days, refreshVersion);
   const productList = useProductList({
     model,
     filters,
@@ -281,6 +306,7 @@ export function useWorkspaceData(options: WorkspaceDataOptions) {
 
   return {
     ...snapshot,
+    storeOptions,
     products: productList.products,
     productError: productList.error,
     productsLoading: productList.loading,

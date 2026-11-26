@@ -83,10 +83,17 @@ UI entry and interaction owners:
 - [src/components/OverviewView.tsx](../src/components/OverviewView.tsx)
 - [src/components/ProductsView.tsx](../src/components/ProductsView.tsx)
 - [src/components/SettingsView.tsx](../src/components/SettingsView.tsx)
+- [src/components/SourceStatus.tsx](../src/components/SourceStatus.tsx)
 - [src/components/StoresView.tsx](../src/components/StoresView.tsx)
 - [src/components/WorkspaceShell.tsx](../src/components/WorkspaceShell.tsx)
 
 The active model is [public/retailpulse-model.json](../public/retailpulse-model.json). Preserve existing loading, empty, validation, permission, success, and failure states; model text does not provide server identity. This is a web SPA; the current source owns view/tab selection and component lifecycle. The Vercel rewrite is hosting configuration, not an additional UI router. Follow the authored source for request cancellation, retry, focus cleanup, and local preference behavior; do not infer an offline queue where none exists.
+
+**Reporting source states (RP-01).** Every view except Settings shows a source banner from the dashboard `source` summary: the state, the source status, the reporting cutoff and coverage. A current source stays compact; awaiting, empty-period, stale and missing states explain themselves.
+
+Before the first committed sale, Overview, Revenue and Stores show an `AwaitingFirstSale` panel instead of zero-filled charts, with a route to the sales source in Settings. Products and Alerts show a dash with a screen-reader "Not available" for sales figures, and alerts read "Awaiting data". Stock shows as unavailable while no source is connected. Settings has a Sales source section with the external channel feed shown as disabled. "Add latest sales" is disabled outside the demo profile.
+
+**Narrow layouts.** Wide tables sit in a positioned, labelled, keyboard-focusable scroll region (`role=region`, `tabIndex=0`). An absolutely positioned `sr-only` header label had escaped the unpositioned wrapper and widened the document to 664px at 320px, on a fresh load as well as after a resize.
 
 ## 5. Primary workflows and recovery
 
@@ -98,7 +105,7 @@ The active model is [public/retailpulse-model.json](../public/retailpulse-model.
 4. Inspect a store: compare locations, open a detail view, and review its trend and category mix.
 5. Find a product: search and sort products, then inspect an individual product.
 6. Update an alert: validate threshold and enabled state, persist the rule and activity event transactionally, and refresh its status.
-7. Add sales records: send an idempotency key, insert configured patterns once in a transaction, and refresh reports; replay does not duplicate rows.
+7. Add sales records (demo profile only): create the idempotency key when the user confirms and reuse it while the outcome is unknown (network error, 5xx, unreadable reply), showing "Awaiting confirmation" and a retry action. Discard the key after a confirmed result or a 4xx refusal. Each attempt sends a new `X-Request-ID`. The key lives only in memory (D-11), and replay does not duplicate rows.
 8. Export a report: validate filters, escape CSV cells, and download the scoped report.
 9. Change appearance: apply light or dark tokens and save the preference in browser storage.
 10. Recover from API/network failure: preserve prior data when available, show a safe error, and retry. A browser-offline event adds a model-backed stale-data notice; an online event refreshes the API snapshot. This is not an offline write queue.
@@ -218,9 +225,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Select Add latest sales] --> B[Generate idempotency key]
+    A[Select Add latest sales] --> B[Reuse the pending intent key or create one]
     B --> C[Browser preflight for POST]
-    C --> D[POST sales/ingest]
+    C --> D[POST sales/ingest with a new X-Request-ID]
     D --> E[API validates idempotency key]
     E --> F{Key already processed?}
     F -->|Yes| G[Return prior batch result]
@@ -349,11 +356,13 @@ All business routes are under `/api/v1`; the API returns request IDs and stable 
 | `GET /activity`, `GET /reports/export`                                 | Activity and filtered CSV export                  |
 | `POST /sales/ingest`                                                   | Idempotent insertion of configured sales patterns |
 
+RP-01 (2026-11-26) adds `source` to the dashboard response; the client schema requires it. It also adds four `Source` rows to the export and `409 SAMPLE_SALES_DISABLED` outside the demo profile, mapped to model copy. The client accepts a per-attempt `X-Request-ID`. The store filter lists stores from `GET /stores` without store or category filters (D-16), not from the bundled `seed`. Deploy this frontend only with a backend that returns `source`.
+
 There is no authentication or resource ownership layer today. The API binds to loopback addresses for local use; it must not be exposed externally until identity and server-side authorization are implemented.
 
 ## 8. Security, privacy, and egress
 
-Current release limitation: **No authentication or authorization: keep the API loopback-only. Four formatting failures and desktop-to-320px Products overflow remain in the baseline; fresh mobile viewports pass.**
+Current release limitation: **No authentication or authorization: keep the API loopback-only. The three recorded formatting failures in this repository remain; the desktop-to-320px Products overflow is fixed on feature/rp-01-source-state-and-resize.**
 
 ### Identity and authorization
 
@@ -430,6 +439,10 @@ CI configuration is listed in section 3. Run the configured checks before mergin
   client cache or read-request deduplication layer.
 - **API response isolation:** UI error mapping uses stable API codes and
   model-backed copy; raw backend error messages are not rendered.
+- **Stable intent key:** `use-workspace-actions` owns the ingest key; the
+  HTTP helper only sends it. Only a 4xx proves a write did not apply.
+- **Figure availability:** `figureAvailability(source)` decides whether sales
+  and stock figures may be shown; views never infer it from zero values.
 
 There is no event bus, transactional outbox, background worker, Redis cache, or
 database migration framework. SQLite tables are initialized by repository
@@ -442,8 +455,11 @@ The two Git repositories remain separate. Each owns one maintained README and th
 | Capability                      | Acceptance                                                        | Owner/path                         | Current status                                                | Evidence                               | Risk                                                                                                                                                                                 |
 | ------------------------------- | ----------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Repository-local architecture   | Guide available in this checkout and linked from README           | docs/architecture.md; README.md    | Documented and validated                                      | File, link, and diagram checks         | Keep documentation consistent with source changes                                                                                                                                    |
-| UI composition and API boundary | Preserve existing workflows and failure states                    | src/main.tsx and source map        | Implemented; application verification limits are listed below | Current source and existing app design | No authentication or authorization: keep the API loopback-only. Four formatting failures and desktop-to-320px Products overflow remain in the baseline; fresh mobile viewports pass. |
+| UI composition and API boundary | Preserve existing workflows and failure states                    | src/main.tsx and source map        | Implemented; application verification limits are listed below | Current source and existing app design | No authentication or authorization: keep the API loopback-only. The three recorded formatting failures in this repository remain; the desktop-to-320px Products overflow is fixed on feature/rp-01-source-state-and-resize. |
 | Public deployment               | Verified identity, data durability, recovery, and hosted behavior | Existing deployment/API boundaries | Needs separate hardening/verification                         | No new hosted evidence                 | Local checks do not establish production readiness                                                                                                                                   |
+| RP-01 source-aware states | Awaiting first sale, accurate zero, stale/missing cutoff and coverage on screen and in the export; nothing invented on an empty install | src/components/SourceStatus.tsx, WorkspaceContent.tsx, lib/presentation.ts | Implemented on feature/rp-01-source-state-and-resize | Unit tests; e2e/retailpulse.spec.ts; e2e/empty-install.empty.ts | No real producer yet (RP-02) |
+| 320px Products resize | Populated Products fits 320px after a desktop resize and on a fresh load; table region scrolls from the keyboard | src/App.css (.table-scroll), ProductsView.tsx, StoresView.tsx | Fixed on the same branch | e2e `RP-01 resize` tests | Other screens not individually resize-tested |
+| RP-03 location scope | A manager sees only granted locations | Not implemented | Design awaiting owner approval | Stage B evidence file | Needs a caller identity first |
 
 ## 13. Dated verification and limitations
 
@@ -452,7 +468,20 @@ Last documentation review: **2026-11-09**. The checks below distinguish document
 - Repository-local guide, README link, source-path references, section/contents anchors, and Mermaid syntax: passed documentation validation.
 - New application tests/builds, coverage, dependency audits, browser/device accessibility/performance, hosted CI, and Vercel deployment: **not rerun for the documentation updates**.
 - Frontend production builds passed on 2026-11-09 with Node 24.15.0. Build success does not establish that all application quality gates pass.
-- Outstanding baseline limit: No authentication or authorization: keep the API loopback-only. Four formatting failures and desktop-to-320px Products overflow remain in the baseline; fresh mobile viewports pass.
+- Outstanding baseline limit: No authentication or authorization: keep the API loopback-only. The three recorded formatting failures in this repository remain; the desktop-to-320px Products overflow is fixed on feature/rp-01-source-state-and-resize.
+
+**2026-11-26, branch `feature/rp-01-source-state-and-resize` (RP-01 and the 320px fix), Node 24.15.0, Windows.** These ran on a shared machine at 47–100% CPU from other workloads.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Lint, typecheck | `npm.cmd run lint`, `npm.cmd run typecheck` | passed |
+| Unit coverage | `vitest run --coverage` | 54/54 in the two final consecutive runs (63–74% CPU): 98.37% statements, 91.16% branches, 98.55% functions, 99.38% lines |
+| Unit coverage under load | same, at 80% CPU or more | the pre-existing long "loads metadata…" test sometimes exceeds the 5s default timeout. The unmodified baseline did the same in 2 of 3 rounds under the same load. No timeout was raised. |
+| Build, audit | `npm.cmd run build`, `npm.cmd audit` | passed, 0 vulnerabilities |
+| Demo E2E | `npm.cmd run test:e2e`, mock and live | 20/20 in each mode |
+| Empty-install E2E | `npm.cmd run test:e2e:empty`, mock and live | 5/5 in each mode |
+| Shared acceptance suite | `scripts/retailpulse.acceptance.config.mjs` | 7/7, including the desktop-to-320px Products resize, with `RETAILPULSE_PROFILE=demo` in the shell. Without it, 7/7 fail because the wrapper starts an empty install with no metric cards; the wrapper needs `RETAILPULSE_PROFILE: 'demo'`. |
+| Format | portable Prettier check | failed, only on the three recorded files |
 
 The baseline results below record earlier validation. Re-run the listed commands against the current revision before release.
 

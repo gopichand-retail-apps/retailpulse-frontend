@@ -57,5 +57,15 @@ jobs:
           VITE_IS_MOCK: 'false'
         run: npm run test:e2e
 
+      - name: Test empty install, mock API selection
+        env:
+          VITE_IS_MOCK: 'true'
+        run: npm run test:e2e:empty
+
+      - name: Test empty install, live API selection
+        env:
+          VITE_IS_MOCK: 'false'
+        run: npm run test:e2e:empty
+
       - name: Build
         run: npm run build

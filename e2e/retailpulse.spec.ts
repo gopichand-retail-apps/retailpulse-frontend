@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 
 const appTitle = 'Sales overview';
@@ -190,6 +191,33 @@ test('mobile navigation opens and selects a workspace view', async ({ page }) =>
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
   await page.getByRole('button', { name: 'Products', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Product performance', level: 1 })).toBeVisible();
+});
+
+test('RP-01: a connected demo source reports its freshness on screen and ahead of the exported sales', async ({
+  page,
+}) => {
+  const banner = page.getByRole('status', { name: 'Sales source' });
+  await expect(banner).toContainText('Up to date');
+  await expect(banner).toContainText('Synthetic demo feed (demo profile)');
+  await expect(banner).toContainText('30 of 30 days with sales');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export report' }).click();
+  const rows = (await readFile(await (await downloadPromise).path(), 'utf8')).split('\r\n');
+  expect(rows[1]).toBe('"Source","Reporting state","Up to date","","","","",""');
+  expect(rows[2]).toBe('"Source","Source status","Synthetic demo feed (demo profile)","","","","",""');
+  expect(rows[3]).toMatch(/^"Source","Reporting cutoff","\d{4}-\d{2}-\d{2}T[\d:.]+Z","","","","",""$/);
+  expect(rows[4]).toBe('"Source","Coverage","30 of 30 days with sales","","","","",""');
+  expect(rows.some((row) => row.startsWith('"Store",'))).toBe(true);
+});
+
+test('RP-01: a connected source with no sales in the chosen scope shows an accurate zero', async ({ page }) => {
+  await page.getByRole('combobox', { name: 'Store', exact: true }).selectOption('store-harbor');
+  await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('beauty');
+
+  await expect(page.getByRole('status', { name: 'Sales source' })).toContainText('Connected, no sales in this period');
+  await expect(page.locator('.metric-card')).toHaveCount(4);
+  await expect(page.locator('.metric-card').first()).toContainText('$0');
 });
 
 async function openProductsOnNarrowViewport(page: Page) {

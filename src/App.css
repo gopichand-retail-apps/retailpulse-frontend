@@ -1501,6 +1501,123 @@
   border-color: color-mix(in srgb, var(--negative) 25%, var(--border));
 }
 
+.notice-pending {
+  color: var(--text);
+  background: color-mix(in srgb, var(--gold) 9%, var(--surface));
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--border));
+  border-left: 3px solid var(--gold);
+}
+
+.source-banner {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--positive);
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.source-banner.is-awaiting_first_sale,
+.source-banner.is-empty_period {
+  border-left-color: var(--blue);
+}
+
+.source-banner.is-stale {
+  border-left-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 7%, var(--surface));
+}
+
+.source-banner.is-missing {
+  border-left-color: var(--negative);
+  background: color-mix(in srgb, var(--negative) 6%, var(--surface));
+}
+
+.source-banner-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.source-banner-state > svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.source-banner-description {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.source-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+}
+
+.source-facts > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+}
+
+.source-facts dt {
+  color: var(--text-muted);
+}
+
+.source-facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.awaiting-panel {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  max-width: 640px;
+  padding: 24px;
+}
+
+.awaiting-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.awaiting-panel p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.awaiting-panel .awaiting-note {
+  color: var(--text);
+}
+
+.awaiting-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 12%, var(--surface));
+  border-radius: 3px;
+}
+
+.unavailable-value {
+  color: var(--text-muted);
+}
+
+.status-pill.is-awaiting {
+  color: var(--blue);
+}
+
 .offline-notice {
   display: flex;
   align-items: center;

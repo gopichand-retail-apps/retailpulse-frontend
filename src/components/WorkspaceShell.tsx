@@ -19,7 +19,8 @@ import type { LucideIcon } from 'lucide-react';
 import { isMock } from '../config';
 import { APP_VERSION } from '../app-version';
 import { copy, timestamp } from '../lib/presentation';
-import type { AlertRule, DashboardData, PublicModel, ThemeMode, WorkspaceView } from '../lib/types';
+import type { AlertRule, DashboardData, PublicModel, StoreOption, ThemeMode, WorkspaceView } from '../lib/types';
+import { SourceBanner } from './SourceStatus';
 import { LoadingState } from './WorkspaceContent';
 
 const navigationIcons: Record<string, LucideIcon> = {
@@ -43,11 +44,13 @@ interface WorkspaceShellProps {
   dataLoading: boolean;
   productsLoading: boolean;
   busyAction: 'ingest' | 'export' | null;
+  ingestUnconfirmed: boolean;
   dashboard: DashboardData | null;
+  storeOptions: StoreOption[];
   rangeId: string;
   storeFilter: string;
   categoryFilter: string;
-  notice: { message: string; tone: 'success' | 'error' } | null;
+  notice: { message: string; tone: 'success' | 'error' | 'pending' } | null;
   loadError: string | null;
   productError: string | null;
   children: ReactNode;
@@ -103,6 +106,8 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
             pageDescription={pageDescription}
             dataLoading={props.dataLoading}
             busyAction={props.busyAction}
+            ingestUnconfirmed={props.ingestUnconfirmed}
+            sampleSalesAvailable={props.dashboard?.source.profile !== 'empty'}
             hasDashboard={props.dashboard !== null}
             onRefresh={props.onRefresh}
             onAddSales={props.onAddSales}
@@ -113,6 +118,7 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
               model={model}
               rangeId={props.rangeId}
               storeFilter={props.storeFilter}
+              storeOptions={props.storeOptions}
               categoryFilter={props.categoryFilter}
               onRangeChange={props.onRangeChange}
               onStoreFilterChange={props.onStoreFilterChange}
@@ -130,6 +136,9 @@ export function WorkspaceShell(props: WorkspaceShellProps) {
             activeView={activeView}
             onRefresh={props.onRefresh}
           />
+          {activeView !== 'settings' && props.dashboard ? (
+            <SourceBanner model={model} source={props.dashboard.source} />
+          ) : null}
           <section className="view-content" aria-label={pageTitle}>
             <Suspense fallback={<LoadingState model={model} />}>{children}</Suspense>
           </section>
@@ -276,6 +285,8 @@ function WorkspacePageHeading({
   pageDescription,
   dataLoading,
   busyAction,
+  ingestUnconfirmed,
+  sampleSalesAvailable,
   hasDashboard,
   onRefresh,
   onAddSales,
@@ -286,6 +297,8 @@ function WorkspacePageHeading({
   pageDescription: string;
   dataLoading: boolean;
   busyAction: WorkspaceShellProps['busyAction'];
+  ingestUnconfirmed: boolean;
+  sampleSalesAvailable: boolean;
   hasDashboard: boolean;
   onRefresh: () => void;
   onAddSales: () => void;
@@ -311,9 +324,15 @@ function WorkspacePageHeading({
         >
           <RefreshCw size={16} className={dataLoading ? 'is-spinning' : undefined} aria-hidden="true" />
         </button>
-        <button type="button" className="button button-secondary" onClick={onAddSales} disabled={busyAction !== null}>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={onAddSales}
+          disabled={busyAction !== null || !sampleSalesAvailable}
+          title={sampleSalesAvailable ? undefined : copy(model, 'ingestUnavailable')}
+        >
           <Upload size={15} aria-hidden="true" />
-          {copy(model, 'ingest')}
+          {copy(model, ingestUnconfirmed ? 'ingestRetry' : 'ingest')}
         </button>
         <button
           type="button"
@@ -333,6 +352,7 @@ function ReportFilters({
   model,
   rangeId,
   storeFilter,
+  storeOptions,
   categoryFilter,
   onRangeChange,
   onStoreFilterChange,
@@ -342,6 +362,7 @@ function ReportFilters({
   | 'model'
   | 'rangeId'
   | 'storeFilter'
+  | 'storeOptions'
   | 'categoryFilter'
   | 'onRangeChange'
   | 'onStoreFilterChange'
@@ -371,7 +392,7 @@ function ReportFilters({
         <span>{copy(model, 'storeFilter')}</span>
         <select value={storeFilter} onChange={(event) => onStoreFilterChange(event.target.value)}>
           <option value="">{copy(model, 'allStores')}</option>
-          {model.seed.stores.map((store) => (
+          {storeOptions.map((store) => (
             <option key={store.id} value={store.id}>
               {store.name}
             </option>

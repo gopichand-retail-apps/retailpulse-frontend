@@ -1,9 +1,11 @@
 import { ArrowLeft, ArrowUpRight, Search } from 'lucide-react';
 import { categoryName, compactCurrency, copy, currency, percentage, quantity } from '../lib/presentation';
-import type { ProductSummary, PublicModel } from '../lib/types';
+import type { FigureAvailability, ProductSummary, PublicModel } from '../lib/types';
+import { UnavailableValue } from './SourceStatus';
 
 interface ProductsViewProps {
   model: PublicModel;
+  figures: FigureAvailability;
   products: ProductSummary[];
   selectedProduct: ProductSummary | null;
   search: string;
@@ -16,6 +18,7 @@ interface ProductsViewProps {
 
 export function ProductsView({
   model,
+  figures,
   products,
   selectedProduct,
   search,
@@ -25,7 +28,9 @@ export function ProductsView({
   onOpenProduct,
   onBack,
 }: ProductsViewProps) {
-  if (selectedProduct) return <ProductDetailView model={model} product={selectedProduct} onBack={onBack} />;
+  if (selectedProduct) {
+    return <ProductDetailView model={model} figures={figures} product={selectedProduct} onBack={onBack} />;
+  }
 
   return (
     <section className="panel data-panel full-panel">
@@ -93,10 +98,22 @@ export function ProductsView({
                   </td>
                   <td className="mono-cell">{product.sku}</td>
                   <td>{categoryName(model, product.category)}</td>
-                  <td>{compactCurrency(model, product.revenueCents)}</td>
-                  <td>{quantity(model, product.unitsSold)}</td>
-                  <td>{percentage(model, product.grossMarginPct)}</td>
-                  <td>{quantity(model, product.stockOnHand)}</td>
+                  <td>
+                    <Figure
+                      model={model}
+                      available={figures.sales}
+                      value={compactCurrency(model, product.revenueCents)}
+                    />
+                  </td>
+                  <td>
+                    <Figure model={model} available={figures.sales} value={quantity(model, product.unitsSold)} />
+                  </td>
+                  <td>
+                    <Figure model={model} available={figures.sales} value={percentage(model, product.grossMarginPct)} />
+                  </td>
+                  <td>
+                    <Figure model={model} available={figures.stock} value={quantity(model, product.stockOnHand)} />
+                  </td>
                   <td>
                     <button
                       className="icon-button"
@@ -118,12 +135,18 @@ export function ProductsView({
   );
 }
 
+function Figure({ model, available, value }: { model: PublicModel; available: boolean; value: string }) {
+  return available ? <>{value}</> : <UnavailableValue model={model} />;
+}
+
 function ProductDetailView({
   model,
+  figures,
   product,
   onBack,
 }: {
   model: PublicModel;
+  figures: FigureAvailability;
   product: ProductSummary;
   onBack: () => void;
 }) {
@@ -142,26 +165,36 @@ function ProductDetailView({
           <h2>{product.name}</h2>
           <p>{categoryName(model, product.category)}</p>
         </div>
-        <span className={product.revenueChangePct >= 0 ? 'change-pill is-positive' : 'change-pill is-negative'}>
-          {percentage(model, product.revenueChangePct)}
-        </span>
+        {figures.sales ? (
+          <span className={product.revenueChangePct >= 0 ? 'change-pill is-positive' : 'change-pill is-negative'}>
+            {percentage(model, product.revenueChangePct)}
+          </span>
+        ) : null}
       </section>
       <section className="detail-metrics">
         <div>
           <span>{copy(model, 'revenue')}</span>
-          <strong>{compactCurrency(model, product.revenueCents)}</strong>
+          <strong>
+            <Figure model={model} available={figures.sales} value={compactCurrency(model, product.revenueCents)} />
+          </strong>
         </div>
         <div>
           <span>{copy(model, 'unitsSold')}</span>
-          <strong>{quantity(model, product.unitsSold)}</strong>
+          <strong>
+            <Figure model={model} available={figures.sales} value={quantity(model, product.unitsSold)} />
+          </strong>
         </div>
         <div>
           <span>{copy(model, 'grossMargin')}</span>
-          <strong>{percentage(model, product.grossMarginPct)}</strong>
+          <strong>
+            <Figure model={model} available={figures.sales} value={percentage(model, product.grossMarginPct)} />
+          </strong>
         </div>
         <div>
           <span>{copy(model, 'stockOnHand')}</span>
-          <strong>{quantity(model, product.stockOnHand)}</strong>
+          <strong>
+            <Figure model={model} available={figures.stock} value={quantity(model, product.stockOnHand)} />
+          </strong>
         </div>
       </section>
       <section className="panel detail-facts">
@@ -179,7 +212,9 @@ function ProductDetailView({
         </div>
         <div>
           <span>{copy(model, 'marginValue')}</span>
-          <strong>{compactCurrency(model, product.grossMarginCents)}</strong>
+          <strong>
+            <Figure model={model} available={figures.sales} value={compactCurrency(model, product.grossMarginCents)} />
+          </strong>
         </div>
       </section>
       <button type="button" className="text-action detail-back-link" onClick={onBack}>

@@ -7,6 +7,7 @@ import type {
   MetricSummary,
   ProductSummary,
   PublicModel,
+  SourceSummary,
   StoreDetail,
   StoreSummary,
 } from '../lib/types';
@@ -103,8 +104,42 @@ export const storeDetail: StoreDetail = {
   categories,
 };
 
+export const source: SourceSummary = {
+  profile: 'demo',
+  connection: 'fixture',
+  state: 'current',
+  cutoffAt: '2026-11-01T12:00:00.000Z',
+  coverage: { daysWithSales: 30, daysInPeriod: 30 },
+};
+
+export const awaitingSource: SourceSummary = {
+  profile: 'empty',
+  connection: 'none',
+  state: 'awaiting_first_sale',
+  cutoffAt: null,
+  coverage: { daysWithSales: 0, daysInPeriod: 30 },
+};
+
+export const staleSource: SourceSummary = {
+  ...source,
+  state: 'stale',
+  cutoffAt: '2026-10-27T17:03:00.000Z',
+  coverage: { daysWithSales: 24, daysInPeriod: 30 },
+};
+
+export const emptyPeriodSource: SourceSummary = { ...source, state: 'empty_period' };
+
+export const missingSource: SourceSummary = {
+  ...source,
+  profile: 'empty',
+  connection: 'none',
+  state: 'missing',
+  coverage: { daysWithSales: 4, daysInPeriod: 30 },
+};
+
 export const dashboard: DashboardData = {
   period: { days: 30, from: '2026-10-03', to: '2026-11-01' },
+  source,
   metrics,
   series,
   stores: [store, secondStore],

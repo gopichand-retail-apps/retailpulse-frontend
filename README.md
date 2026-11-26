@@ -39,13 +39,15 @@ npm audit
 npm run build
 VITE_IS_MOCK=true npm run test:e2e
 VITE_IS_MOCK=false npm run test:e2e
+VITE_IS_MOCK=true npm run test:e2e:empty
+VITE_IS_MOCK=false npm run test:e2e:empty
 ```
 
 The unit suite enforces at least 90% line, statement, function, and branch
 coverage. The E2E suite covers reporting filters, stores/products, alert
 changes, synthetic sales ingestion, CSV export, recovery, error-copy mapping,
 architecture isolation, and mobile navigation in both API-selection modes.
-Its isolated API uses an in-memory SQLite database.
+Its isolated API uses an in-memory SQLite database started with `RETAILPULSE_PROFILE=demo`. `test:e2e:empty` starts the same isolated API on its default empty profile, and checks that no invented figures reach the screen or the CSV. Run the two suites one after the other because they share ports.
 
 The GitHub Actions workflow runs formatting, lint, unit coverage, dependency
 audit, both API-selection E2E modes, and a production build. SAST and
@@ -59,6 +61,10 @@ RETAILPULSE_FRONTEND_PORT=5703 \
 RETAILPULSE_API_PORT=5704 \
 npm run test:e2e
 ```
+
+## Reporting source states (RP-01)
+
+A fresh API install is empty: the UI says "Awaiting first sale" with the source status, cutoff and coverage, and shows no zero-filled figures or seeded stock numbers. A connected source with no sales in the chosen scope shows an accurate zero, and a stale or missing source shows its cutoff and coverage. The CSV export carries the same source rows. To see synthetic data locally, start the API with `RETAILPULSE_PROFILE=demo` on a fresh database. All new copy is in `public/retailpulse-model.json`.
 
 ## Contract and Limitations
 
@@ -76,4 +82,4 @@ Production Vite assets do not contain the development proxy; requests use the co
 
 The configuration adds noindex, frame/content-type/referrer/permission protections and no-store for the active UI model. Headers and noindex do not provide access control. Keep preview deployment protection enabled and use synthetic data. Hosted routing, cookies, headers, and user workflows have **not** been verified; no deployment is performed.
 
-Known release gaps: No authentication or authorization: keep the API loopback-only. Four formatting failures and desktop-to-320px Products overflow remain in the baseline; fresh mobile viewports pass.
+Known release gaps: No authentication or authorization: keep the API loopback-only. Three recorded formatting failures remain in this repository (`src/app-version.ts`, `src/components/WorkspaceShell.tsx`, `public/retailpulse.model.json`). The desktop-to-320px Products overflow is fixed and covered by the `RP-01 resize` E2E tests.

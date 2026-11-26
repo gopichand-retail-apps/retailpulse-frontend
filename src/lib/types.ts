@@ -28,8 +28,11 @@ export interface PublicModel {
     maximumAlertThreshold: number;
     maximumActivityItems: number;
   };
+  source: {
+    staleAfterHours: number;
+  };
   reports: {
-    recordTypes: { store: string; product: string };
+    recordTypes: { store: string; product: string; source: string };
     csvHeaders: string[];
   };
   seed: {
@@ -134,8 +137,29 @@ export interface ProductSummary extends MetricSummary {
   displayOrder?: number;
 }
 
+export type SourceState = 'awaiting_first_sale' | 'empty_period' | 'current' | 'stale' | 'missing';
+
+export interface SourceSummary {
+  profile: 'empty' | 'demo';
+  connection: 'fixture' | 'none';
+  state: SourceState;
+  cutoffAt: string | null;
+  coverage: { daysWithSales: number; daysInPeriod: number };
+}
+
+export interface FigureAvailability {
+  sales: boolean;
+  stock: boolean;
+}
+
+export interface StoreOption {
+  id: string;
+  name: string;
+}
+
 export interface DashboardData {
   period: { days: number; from: string; to: string };
+  source: SourceSummary;
   metrics: MetricSummary;
   series: SalesSeriesPoint[];
   stores: StoreSummary[];
