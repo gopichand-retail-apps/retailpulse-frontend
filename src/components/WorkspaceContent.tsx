@@ -1,7 +1,8 @@
 import { lazy } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AlertsView } from './AlertsView';
-import { copy } from '../lib/presentation';
+import { AwaitingFirstSale } from './SourceStatus';
+import { copy, figureAvailability } from '../lib/presentation';
 import type {
   ActivityEvent,
   AlertRule,
@@ -18,6 +19,9 @@ const RevenueView = lazy(() => import('./OverviewView').then((module) => ({ defa
 const ProductsView = lazy(() => import('./ProductsView').then((module) => ({ default: module.ProductsView })));
 const SettingsView = lazy(() => import('./SettingsView').then((module) => ({ default: module.SettingsView })));
 const StoresView = lazy(() => import('./StoresView').then((module) => ({ default: module.StoresView })));
+
+/** Views made only of sales figures, charts and rankings: before the first sale they have nothing true to show. */
+const salesOnlyViews: readonly WorkspaceView[] = ['overview', 'revenue', 'stores'];
 
 interface WorkspaceContentProps {
   model: PublicModel;
@@ -40,6 +44,7 @@ interface WorkspaceContentProps {
   detailError: string | null;
   onTheme: (theme: 'light' | 'dark') => void;
   onRetry: () => void;
+  onReviewSource: () => void;
   onOpenStore: (storeId: string) => void;
   onOpenProduct: (productId: string) => void;
   onViewStores: () => void;
@@ -51,43 +56,16 @@ interface WorkspaceContentProps {
   onSaveAlert: (alertId: string, changes: { threshold: number; enabled: boolean }) => void;
 }
 
-export function WorkspaceContent({
-  model,
-  activeView,
-  dashboard,
-  theme,
-  apiReady,
-  activity,
-  stores,
-  products,
-  selectedStore,
-  selectedProduct,
-  search,
-  sort,
-  alerts,
-  savingAlertId,
-  alertError,
-  loadError,
-  detailLoading,
-  detailError,
-  onTheme,
-  onRetry,
-  onOpenStore,
-  onOpenProduct,
-  onViewStores,
-  onViewProducts,
-  onBackToStores,
-  onBackToProducts,
-  onSearch,
-  onSort,
-  onSaveAlert,
-}: WorkspaceContentProps) {
+type ActiveViewProps = Omit<WorkspaceContentProps, 'dashboard'> & { dashboard: DashboardData };
+
+export function WorkspaceContent(props: WorkspaceContentProps) {
+  const { model, activeView, dashboard, loadError, detailLoading, detailError } = props;
   if (loadError && !dashboard) {
     return (
       <section className="error-panel" role="alert">
         <h2>{copy(model, 'contentError')}</h2>
         <p>{loadError}</p>
-        <button type="button" className="button button-secondary" onClick={onRetry}>
+        <button type="button" className="button button-secondary" onClick={props.onRetry}>
           <RefreshCw size={15} aria-hidden="true" />
           {copy(model, 'retry')}
         </button>
@@ -103,25 +81,39 @@ export function WorkspaceContent({
         <button
           type="button"
           className="button button-secondary"
-          onClick={activeView === 'products' ? onBackToProducts : onBackToStores}
+          onClick={activeView === 'products' ? props.onBackToProducts : props.onBackToStores}
         >
           {copy(model, 'back')}
         </button>
       </section>
     );
   }
+  if (!figureAvailability(dashboard.source).sales && salesOnlyViews.includes(activeView)) {
+    return (
+      <AwaitingFirstSale
+        model={model}
+        sampleSalesAvailable={dashboard.source.profile === 'demo'}
+        onReviewSource={props.onReviewSource}
+      />
+    );
+  }
+  return <ActiveView {...props} dashboard={dashboard} />;
+}
 
-  switch (activeView) {
+function ActiveView(props: ActiveViewProps) {
+  const { model, dashboard } = props;
+  const figures = figureAvailability(dashboard.source);
+  switch (props.activeView) {
     case 'overview':
       return (
         <OverviewView
           model={model}
           dashboard={dashboard}
-          activity={activity}
-          onOpenStore={onOpenStore}
-          onOpenProduct={onOpenProduct}
-          onViewStores={onViewStores}
-          onViewProducts={onViewProducts}
+          activity={props.activity}
+          onOpenStore={props.onOpenStore}
+          onOpenProduct={props.onOpenProduct}
+          onViewStores={props.onViewStores}
+          onViewProducts={props.onViewProducts}
         />
       );
     case 'revenue':
@@ -130,32 +122,48 @@ export function WorkspaceContent({
       return (
         <StoresView
           model={model}
-          stores={stores}
-          selectedStore={selectedStore}
-          onOpenStore={onOpenStore}
-          onBack={onBackToStores}
+          stores={props.stores}
+          selectedStore={props.selectedStore}
+          onOpenStore={props.onOpenStore}
+          onBack={props.onBackToStores}
         />
       );
     case 'products':
       return (
         <ProductsView
           model={model}
-          products={products}
-          selectedProduct={selectedProduct}
-          search={search}
-          sort={sort}
-          onSearch={onSearch}
-          onSort={onSort}
-          onOpenProduct={onOpenProduct}
-          onBack={onBackToProducts}
+          figures={figures}
+          products={props.products}
+          selectedProduct={props.selectedProduct}
+          search={props.search}
+          sort={props.sort}
+          onSearch={props.onSearch}
+          onSort={props.onSort}
+          onOpenProduct={props.onOpenProduct}
+          onBack={props.onBackToProducts}
         />
       );
     case 'alerts':
       return (
-        <AlertsView model={model} alerts={alerts} savingId={savingAlertId} error={alertError} onSave={onSaveAlert} />
+        <AlertsView
+          model={model}
+          inputAvailable={figures.sales}
+          alerts={props.alerts}
+          savingId={props.savingAlertId}
+          error={props.alertError}
+          onSave={props.onSaveAlert}
+        />
       );
     case 'settings':
-      return <SettingsView model={model} theme={theme} apiReady={apiReady} onTheme={onTheme} />;
+      return (
+        <SettingsView
+          model={model}
+          source={dashboard.source}
+          theme={props.theme}
+          apiReady={props.apiReady}
+          onTheme={props.onTheme}
+        />
+      );
     default:
       return null;
   }

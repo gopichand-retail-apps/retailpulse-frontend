@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { expect, test, type Page } from '@playwright/test';
 
 const appTitle = 'Sales overview';
 const frontendPort = process.env.RETAILPULSE_FRONTEND_PORT ?? '5701';
@@ -190,4 +191,74 @@ test('mobile navigation opens and selects a workspace view', async ({ page }) =>
   await expect(page.getByRole('navigation', { name: 'Primary navigation' })).toBeVisible();
   await page.getByRole('button', { name: 'Products', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Product performance', level: 1 })).toBeVisible();
+});
+
+test('RP-01: a connected demo source reports its freshness on screen and ahead of the exported sales', async ({
+  page,
+}) => {
+  const banner = page.getByRole('status', { name: 'Sales source' });
+  await expect(banner).toContainText('Up to date');
+  await expect(banner).toContainText('Synthetic demo feed (demo profile)');
+  await expect(banner).toContainText('30 of 30 days with sales');
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export report' }).click();
+  const rows = (await readFile(await (await downloadPromise).path(), 'utf8')).split('\r\n');
+  expect(rows[1]).toBe('"Source","Reporting state","Up to date","","","","",""');
+  expect(rows[2]).toBe('"Source","Source status","Synthetic demo feed (demo profile)","","","","",""');
+  expect(rows[3]).toMatch(/^"Source","Reporting cutoff","\d{4}-\d{2}-\d{2}T[\d:.]+Z","","","","",""$/);
+  expect(rows[4]).toBe('"Source","Coverage","30 of 30 days with sales","","","","",""');
+  expect(rows.some((row) => row.startsWith('"Store",'))).toBe(true);
+});
+
+test('RP-01: a connected source with no sales in the chosen scope shows an accurate zero', async ({ page }) => {
+  await page.getByRole('combobox', { name: 'Store', exact: true }).selectOption('store-harbor');
+  await page.getByRole('combobox', { name: 'Category', exact: true }).selectOption('beauty');
+
+  await expect(page.getByRole('status', { name: 'Sales source' })).toContainText('Connected, no sales in this period');
+  await expect(page.locator('.metric-card')).toHaveCount(4);
+  await expect(page.locator('.metric-card').first()).toContainText('$0');
+});
+
+async function openProductsOnNarrowViewport(page: Page) {
+  await page.getByRole('button', { name: 'Open navigation' }).click();
+  await page.getByRole('button', { name: 'Products', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Product performance', level: 1 })).toBeVisible();
+  await expect(page.locator('.data-table tbody tr').first()).toBeVisible();
+}
+
+function documentFitsViewport(page: Page) {
+  return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+}
+
+test('RP-01 resize: a populated Products page stays inside the viewport from desktop down to 320 px', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: 'Products', exact: true }).click();
+  await expect(page.locator('.data-table tbody tr').first()).toBeVisible();
+  for (const width of [768, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect.poll(() => documentFitsViewport(page), { message: `document fits at ${width}px` }).toBe(true);
+  }
+});
+
+test('RP-01 resize: a fresh 320 px load of Products does not overflow the viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openProductsOnNarrowViewport(page);
+  await expect.poll(() => documentFitsViewport(page)).toBe(true);
+});
+
+test('RP-01 resize: the wide Products table sits in a labeled region that scrolls from the keyboard', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openProductsOnNarrowViewport(page);
+  const region = page.getByRole('region', { name: 'Product performance table' });
+  await expect(region).toBeVisible();
+  await region.focus();
+  await expect(region).toBeFocused();
+  for (let press = 0; press < 4; press += 1) await page.keyboard.press('ArrowRight');
+  await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => documentFitsViewport(page)).toBe(true);
 });

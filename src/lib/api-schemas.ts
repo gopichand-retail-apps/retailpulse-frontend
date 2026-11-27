@@ -38,8 +38,22 @@ const productSchema = z
   })
   .extend(metricSchema.shape);
 
+const sourceSchema = z.object({
+  profile: z.enum(['empty', 'demo']),
+  connection: z.enum(['fixture', 'none']),
+  state: z.enum(['awaiting_first_sale', 'empty_period', 'current', 'stale', 'missing']),
+  // Explicit guard: tsconfig.app.json does not enable strictNullChecks, under which zod infers `.nullable()`
+  // keys as optional. A missing key still fails this check at runtime.
+  cutoffAt: z.custom<string | null>((value) => value === null || typeof value === 'string'),
+  coverage: z.object({
+    daysWithSales: z.number().int().nonnegative(),
+    daysInPeriod: z.number().int().positive(),
+  }),
+});
+
 export const dashboardSchema = z.object({
   period: z.object({ days: z.number(), from: z.string(), to: z.string() }),
+  source: sourceSchema,
   metrics: metricSchema,
   series: z.array(
     z.object({
@@ -129,10 +143,14 @@ export const contentModelSchema = z
           maximumAlertThreshold: z.number(),
           maximumActivityItems: z.number(),
         }),
+        source: z.object({
+          staleAfterHours: z.number().positive(),
+        }),
         reports: z.object({
           recordTypes: z.object({
             store: z.string(),
             product: z.string(),
+            source: z.string(),
           }),
           csvHeaders: z.array(z.string()),
         }),
@@ -209,6 +227,7 @@ export function toPublicModel(envelope: ContentModelEnvelope, apiBaseUrl = envel
     copy: envelope.messages,
     filters: envelope.data.filters,
     validation: envelope.data.validation,
+    source: envelope.data.source,
     reports: envelope.data.reports,
     seed: envelope.data.seed,
   };

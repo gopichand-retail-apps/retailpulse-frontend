@@ -118,7 +118,7 @@ describe('RetailPulse API client', () => {
     await expect(getProduct(model, product.id, filters, signal)).resolves.toEqual(product);
     await expect(getAlerts(model, filters, signal)).resolves.toEqual([alert]);
     await expect(updateAlert(model, alert.id, { threshold: -20, enabled: false })).resolves.toEqual(alert);
-    await expect(ingestSales(model)).resolves.toMatchObject({
+    await expect(ingestSales(model, 'intent-key-0001')).resolves.toMatchObject({
       recordsAdded: 12,
       replayed: false,
     });
@@ -141,7 +141,58 @@ describe('RetailPulse API client', () => {
     });
     expect(fetchMock.mock.calls[8]?.[1]).toMatchObject({
       method: 'POST',
-      headers: { 'Idempotency-Key': expect.any(String) },
+      headers: { 'Idempotency-Key': 'intent-key-0001', 'X-Request-ID': expect.any(String) },
+    });
+  });
+
+  it('sends the caller-owned idempotency key with a fresh request ID on every attempt', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({ batchNumber: 1, importedAt: '2026-11-01T12:30:00.000Z', recordsAdded: 3, replayed: true }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await ingestSales(model, 'intent-key-0002');
+    await ingestSales(model, 'intent-key-0002');
+    const headers = fetchMock.mock.calls.map(([, init]) => new Headers(init?.headers));
+
+    expect(headers.map((value) => value.get('Idempotency-Key'))).toEqual(['intent-key-0002', 'intent-key-0002']);
+    const requestIds = headers.map((value) => value.get('X-Request-ID'));
+    expect(requestIds[0]).toMatch(/^[A-Za-z0-9._:-]{8,128}$/);
+    expect(requestIds[0]).not.toBe(requestIds[1]);
+  });
+
+  it('rejects a dashboard that does not say where its figures come from', async () => {
+    const { source: omitted, ...withoutSource } = dashboard;
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(withoutSource)));
+
+    expect(omitted.state).toBe('current');
+    await expect(getDashboard(model, { days: 30 })).rejects.toMatchObject({ message: model.copy.apiRequestError });
+  });
+
+  it('rejects a source summary whose cutoff is missing rather than reading it as no cutoff', async () => {
+    const { cutoffAt: omitted, ...sourceWithoutCutoff } = dashboard.source;
+    const withNullCutoff = { ...dashboard, source: { ...dashboard.source, cutoffAt: null } };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(jsonResponse({ ...dashboard, source: sourceWithoutCutoff }))
+        .mockResolvedValueOnce(jsonResponse({ ...dashboard, source: { ...dashboard.source, cutoffAt: 42 } }))
+        .mockResolvedValueOnce(jsonResponse(withNullCutoff)),
+    );
+
+    expect(omitted).toBeTruthy();
+    await expect(getDashboard(model, { days: 30 })).rejects.toMatchObject({ message: model.copy.apiRequestError });
+    await expect(getDashboard(model, { days: 30 })).rejects.toMatchObject({ message: model.copy.apiRequestError });
+    await expect(getDashboard(model, { days: 30 })).resolves.toEqual(withNullCutoff);
+  });
+
+  it('maps a refused sample-sales request to model copy', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(errorResponse('SAMPLE_SALES_DISABLED', 409)));
+
+    await expect(ingestSales(model, 'intent-key-0003')).rejects.toMatchObject({
+      message: nestedCopy(model, 'errors', 'sampleSalesDisabled'),
+      status: 409,
     });
   });
 

@@ -1,15 +1,17 @@
 import { Database, Moon, ShieldCheck, Sun } from 'lucide-react';
 import { copy } from '../lib/presentation';
-import type { PublicModel, ThemeMode } from '../lib/types';
+import type { PublicModel, SourceSummary, ThemeMode } from '../lib/types';
+import { SourceSettingsSection } from './SourceStatus';
 
 interface SettingsViewProps {
   model: PublicModel;
+  source: SourceSummary;
   theme: ThemeMode;
   apiReady: boolean;
   onTheme: (theme: ThemeMode) => void;
 }
 
-export function SettingsView({ model, theme, apiReady, onTheme }: SettingsViewProps) {
+export function SettingsView({ model, source, theme, apiReady, onTheme }: SettingsViewProps) {
   return (
     <div className="settings-layout">
       <section className="settings-section">
@@ -43,6 +45,7 @@ export function SettingsView({ model, theme, apiReady, onTheme }: SettingsViewPr
           </button>
         </div>
       </section>
+      <SourceSettingsSection model={model} source={source} />
       <section className="settings-section">
         <div className="settings-heading">
           <span className="settings-icon">

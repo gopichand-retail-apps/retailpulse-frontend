@@ -48,6 +48,7 @@ const errorCopyByCode: Readonly<Record<string, string>> = {
   PRODUCT_NOT_FOUND: 'notFound',
   ALERT_NOT_FOUND: 'notFound',
   NOT_FOUND: 'notFound',
+  SAMPLE_SALES_DISABLED: 'sampleSalesDisabled',
   INTERNAL_ERROR: 'server',
 };
 
@@ -168,7 +169,11 @@ export function updateAlert(model: PublicModel, alertId: string, changes: { thre
   });
 }
 
-export function ingestSales(model: PublicModel) {
+/**
+ * The caller owns the idempotency key for the whole intent (create on confirm, reuse on retry);
+ * every HTTP attempt carries its own request ID.
+ */
+export function ingestSales(model: PublicModel, idempotencyKey: string) {
   return requestData(
     model,
     '/sales/ingest',
@@ -178,7 +183,10 @@ export function ingestSales(model: PublicModel) {
       recordsAdded: z.number(),
       replayed: z.boolean(),
     }),
-    { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } },
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey, 'X-Request-ID': crypto.randomUUID() },
+    },
   );
 }
 

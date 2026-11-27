@@ -29,7 +29,7 @@ export function StoresView({ model, stores, selectedStore, onOpenStore, onBack }
       {stores.length === 0 ? (
         <p className="empty-state">{copy(model, 'noStores')}</p>
       ) : (
-        <div className="table-scroll">
+        <div className="table-scroll" role="region" aria-label={copy(model, 'storeTableRegion')} tabIndex={0}>
           <table className="data-table">
             <thead>
               <tr>

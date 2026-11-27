@@ -48,6 +48,9 @@ export default defineConfig({
         PORT: String(apiPort),
         RETAILPULSE_DB_PATH: ':memory:',
         RETAILPULSE_E2E_FRONTEND_ORIGIN: frontendUrl,
+        // These flows exercise populated reports, so they opt in to synthetic fixtures. A fresh install is
+        // empty by default; playwright.empty.config.ts covers that case.
+        RETAILPULSE_PROFILE: 'demo',
       },
     },
     {

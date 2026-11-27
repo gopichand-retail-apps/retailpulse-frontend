@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CircleDollarSign } from 'lucide-react';
@@ -8,7 +8,18 @@ import { OverviewView, RevenueView } from './OverviewView';
 import { ProductsView } from './ProductsView';
 import { SettingsView } from './SettingsView';
 import { StoresView } from './StoresView';
-import { alert, dashboard, metrics, model, product, store } from '../test/fixtures';
+import {
+  alert,
+  awaitingSource,
+  dashboard,
+  metrics,
+  model,
+  product,
+  secondProduct,
+  source,
+  store,
+} from '../test/fixtures';
+import { copy, figureAvailability } from '../lib/presentation';
 
 vi.mock('./AnalyticsCharts', () => ({
   CategoryChart: () => <div data-testid="category-chart" />,
@@ -21,6 +32,8 @@ vi.mock('./AnalyticsCharts', () => ({
   RevenueChart: () => <div data-testid="revenue-chart" />,
   StoreChart: () => <div data-testid="store-chart" />,
 }));
+
+const allFigures = { sales: true, stock: true };
 
 describe('RetailPulse view components', () => {
   afterEach(() => {
@@ -49,6 +62,7 @@ describe('RetailPulse view components', () => {
     const { container } = render(
       <AlertsView
         model={model}
+        inputAvailable
         alerts={[alert, currencyAlert, quantityAlert]}
         savingId="alert-margin"
         error="A threshold could not be saved."
@@ -161,7 +175,7 @@ describe('RetailPulse view components', () => {
       <>
         <MetricCard model={model} metric="revenue" metrics={negativeMetrics} icon={CircleDollarSign} />
         <MetricCard model={model} metric="units" metrics={negativeMetrics} icon={CircleDollarSign} />
-        <SettingsView model={model} theme="light" apiReady={false} onTheme={onTheme} />
+        <SettingsView model={model} source={source} theme="light" apiReady={false} onTheme={onTheme} />
       </>,
     );
 
@@ -179,6 +193,7 @@ describe('RetailPulse view components', () => {
       <>
         <ProductsView
           model={model}
+          figures={allFigures}
           products={[]}
           selectedProduct={null}
           search=""
@@ -194,5 +209,88 @@ describe('RetailPulse view components', () => {
 
     expect(screen.getByText('No products match this search.')).toBeVisible();
     expect(screen.getByText('No stores match the selected filters.')).toBeVisible();
+  });
+
+  it('shows no sales or stock numbers for products before the first sale', () => {
+    render(
+      <ProductsView
+        model={model}
+        figures={figureAvailability(awaitingSource)}
+        products={[product, secondProduct]}
+        selectedProduct={null}
+        search=""
+        sort="revenue"
+        onSearch={vi.fn()}
+        onSort={vi.fn()}
+        onOpenProduct={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole('row', { name: /Everyday Canvas Tote/ });
+
+    expect(within(row).getAllByText(copy(model, 'notAvailable'))).toHaveLength(4);
+    expect(within(row).queryByText('$1.3K')).toBeNull();
+    expect(within(row).queryByText(String(product.stockOnHand))).toBeNull();
+    expect(within(row).getByText(product.sku)).toBeVisible();
+  });
+
+  it('hides only the stock figure when sales exist but no source feeds stock', () => {
+    render(
+      <ProductsView
+        model={model}
+        figures={{ sales: true, stock: false }}
+        products={[product]}
+        selectedProduct={null}
+        search=""
+        sort="revenue"
+        onSearch={vi.fn()}
+        onSort={vi.fn()}
+        onOpenProduct={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+    const row = screen.getByRole('row', { name: /Everyday Canvas Tote/ });
+
+    expect(within(row).getAllByText(copy(model, 'notAvailable'))).toHaveLength(1);
+    expect(within(row).getByText('$1.3K')).toBeVisible();
+  });
+
+  it('shows unavailable product detail figures before the first sale', () => {
+    render(
+      <ProductsView
+        model={model}
+        figures={figureAvailability(awaitingSource)}
+        products={[]}
+        selectedProduct={product}
+        search=""
+        sort="revenue"
+        onSearch={vi.fn()}
+        onSort={vi.fn()}
+        onOpenProduct={vi.fn()}
+        onBack={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: product.name, level: 2 })).toBeVisible();
+    expect(screen.getAllByText(copy(model, 'notAvailable')).length).toBeGreaterThanOrEqual(5);
+    expect(screen.queryByText('$1.3K')).toBeNull();
+  });
+
+  it('marks alerts as awaiting data instead of within range when there is no input', () => {
+    render(
+      <AlertsView
+        model={model}
+        inputAvailable={false}
+        alerts={[{ ...alert, triggered: false, value: 0 }]}
+        savingId={null}
+        error={null}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(copy(model, 'awaitingStatus'))).toBeVisible();
+    expect(screen.queryByText('Within range')).toBeNull();
+    expect(document.querySelector('.alert-editor .status-pill.is-high')).toBeNull();
+    expect(screen.getByText(copy(model, 'notAvailable'))).toBeInTheDocument();
   });
 });

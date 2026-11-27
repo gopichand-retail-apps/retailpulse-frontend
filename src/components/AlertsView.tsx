@@ -1,17 +1,20 @@
-import { BellRing, Check, CircleAlert, SlidersHorizontal } from 'lucide-react';
+import { BellRing, Check, CircleAlert, Hourglass, SlidersHorizontal } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { compactCurrency, copy, percentage, quantity } from '../lib/presentation';
 import type { AlertRule, PublicModel } from '../lib/types';
+import { UnavailableValue } from './SourceStatus';
 
 interface AlertsViewProps {
   model: PublicModel;
+  /** False until the install has a committed sale: alert values then have no input to judge. */
+  inputAvailable: boolean;
   alerts: AlertRule[];
   savingId: string | null;
   error: string | null;
   onSave: (id: string, changes: { threshold: number; enabled: boolean }) => void;
 }
 
-export function AlertsView({ model, alerts, savingId, error, onSave }: AlertsViewProps) {
+export function AlertsView({ model, inputAvailable, alerts, savingId, error, onSave }: AlertsViewProps) {
   return (
     <div className="view-stack">
       <section className="alert-summary">
@@ -35,7 +38,14 @@ export function AlertsView({ model, alerts, savingId, error, onSave }: AlertsVie
       ) : null}
       <div className="alert-list">
         {alerts.map((alert) => (
-          <AlertEditor key={alert.id} model={model} alert={alert} saving={savingId === alert.id} onSave={onSave} />
+          <AlertEditor
+            key={alert.id}
+            model={model}
+            alert={alert}
+            inputAvailable={inputAvailable}
+            saving={savingId === alert.id}
+            onSave={onSave}
+          />
         ))}
       </div>
     </div>
@@ -45,11 +55,13 @@ export function AlertsView({ model, alerts, savingId, error, onSave }: AlertsVie
 function AlertEditor({
   model,
   alert,
+  inputAvailable,
   saving,
   onSave,
 }: {
   model: PublicModel;
   alert: AlertRule;
+  inputAvailable: boolean;
   saving: boolean;
   onSave: AlertsViewProps['onSave'];
 }) {
@@ -73,13 +85,13 @@ function AlertEditor({
         <div className="alert-copy">
           <div className="alert-title-row">
             <h2>{alert.title}</h2>
-            <AlertStatus model={model} alert={alert} />
+            <AlertStatus model={model} alert={alert} inputAvailable={inputAvailable} />
           </div>
           <p>{alert.description}</p>
         </div>
         <div className="alert-current">
           <span>{copy(model, 'currentPeriod')}</span>
-          <strong>{value}</strong>
+          <strong>{inputAvailable ? value : <UnavailableValue model={model} />}</strong>
         </div>
       </div>
       <div className="alert-editor-controls">
@@ -147,7 +159,23 @@ function submitAlertForm(
   onSave(alert.id, { threshold: parsedThreshold, enabled });
 }
 
-function AlertStatus({ model, alert }: { model: PublicModel; alert: AlertRule }) {
+function AlertStatus({
+  model,
+  alert,
+  inputAvailable,
+}: {
+  model: PublicModel;
+  alert: AlertRule;
+  inputAvailable: boolean;
+}) {
+  if (!inputAvailable) {
+    return (
+      <span className="status-pill is-awaiting">
+        <Hourglass size={13} aria-hidden="true" />
+        {copy(model, 'awaitingStatus')}
+      </span>
+    );
+  }
   const triggered = alert.enabled && alert.triggered;
   return (
     <span className={`status-pill ${triggered ? `is-${alert.severity}` : ''}`}>

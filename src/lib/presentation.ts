@@ -1,4 +1,4 @@
-import type { PublicModel } from './types';
+import type { FigureAvailability, PublicModel, SourceSummary } from './types';
 
 export function copy(model: PublicModel, key: string): string {
   const value = model.copy[key];
@@ -65,4 +65,27 @@ export function timestamp(model: PublicModel, value: string): string {
 
 export function categoryName(model: PublicModel, id: string): string {
   return model.filters.categories.find((category) => category.id === id)?.label ?? id;
+}
+
+/** Named placeholders only; an unknown placeholder stays visible rather than becoming "undefined". */
+export function interpolate(template: string, values: Readonly<Record<string, string | number>>): string {
+  return template.replace(/\{(\w+)\}/g, (placeholder, key: string) =>
+    key in values ? String(values[key]) : placeholder,
+  );
+}
+
+export function sourceCoverageText(model: PublicModel, coverage: SourceSummary['coverage']): string {
+  return interpolate(copy(model, 'sourceCoverageValue'), {
+    covered: coverage.daysWithSales,
+    total: coverage.daysInPeriod,
+  });
+}
+
+export function sourceCutoffText(model: PublicModel, cutoffAt: string | null): string {
+  return cutoffAt === null ? copy(model, 'sourceNoCutoff') : timestamp(model, cutoffAt);
+}
+
+/** Sales figures need a committed sale; stock snapshots need a connected source to supply them. */
+export function figureAvailability(source: SourceSummary): FigureAvailability {
+  return { sales: source.state !== 'awaiting_first_sale', stock: source.connection !== 'none' };
 }
