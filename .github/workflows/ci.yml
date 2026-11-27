@@ -29,6 +29,14 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Check out the matching backend for end-to-end tests
+        run: |
+          repo=https://github.com/gopichand-retail-apps/retailpulse-backend.git
+          ref="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          git ls-remote --exit-code --heads "$repo" "$ref" > /dev/null || ref=main
+          git clone --depth 1 --branch "$ref" "$repo" ../retailpulse-backend
+          npm ci --prefix ../retailpulse-backend
+
       - name: Check formatting
         run: npm run format:check
 
